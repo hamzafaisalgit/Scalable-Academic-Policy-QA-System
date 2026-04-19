@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import Enum
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Set
 
 from minhash_lsh import (
     LocalitySensitiveHash,
@@ -156,7 +156,9 @@ class HybridRetriever:
                 chunk_id=chunk_id,
                 text=self.chunks[chunk_id],
                 similarity_score=score,
-                method="+".join(set(methods))
+                # sorted() makes the method string deterministic regardless of
+                # which retrieval method found the chunk first
+                method="+".join(sorted(set(methods)))
             )
             for chunk_id, (score, methods) in results.items()
         ]
@@ -201,6 +203,22 @@ class HybridRetriever:
             candidates.update(self.simhash_index.tables[0].get(sample_val, set()))
         
         return candidates
+
+    def get_chunk_ids(self) -> List[str]:
+        """
+        Return all chunk IDs currently indexed.
+
+        Used by ``pagerank.build_pagerank_from_lsh()`` so it can iterate over
+        chunks without accessing ``lsh.doc_signatures`` keys directly.
+        """
+        return list(self.chunks.keys())
+
+    def get_chunk_text(self, chunk_id: str) -> str:
+        """
+        Return the raw text for a given *chunk_id*.
+        Raises ``KeyError`` if the chunk is not in the index.
+        """
+        return self.chunks[chunk_id]
 
 
 if __name__ == "__main__":

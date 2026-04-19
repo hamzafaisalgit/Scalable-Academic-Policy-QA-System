@@ -94,8 +94,10 @@ class LocalitySensitiveHash:
                 f"num_perm ({num_perm}) must be divisible by num_bands ({self.num_bands})"
             )
         
-        # Initialize datasketch LSH
-        self.lsh = MinHashLSH(threshold=0.0, num_perm=num_perm)
+        # Initialize datasketch LSH with explicit band structure.
+        # Using params=(b, r) instead of threshold so the num_bands/rows_per_band
+        # we computed above are the ones actually used by the index.
+        self.lsh = MinHashLSH(num_perm=num_perm, params=(self.num_bands, self.rows_per_band))
         self.doc_signatures: dict[str, MinHash] = {}
     
     def add_document(self, doc_id: str, minhash: MinHash) -> None:

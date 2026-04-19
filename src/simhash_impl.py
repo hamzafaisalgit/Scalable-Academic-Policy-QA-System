@@ -49,20 +49,28 @@ class SimHash:
     def compute(self, text: str, shingle_size: int = 4) -> None:
         """
         Compute SimHash fingerprint for text.
-        
+
         Args:
             text: Input text
-            shingle_size: Size of shingles (default: 4)
+            shingle_size: Size of character shingles (default: 4)
         """
         # Normalize text
         text = text.lower().strip()
-        
+
         if not text:
-            self._simhash = SimHashLib("")
+            self._simhash = SimHashLib([])
             self._fingerprint = 0
         else:
-            # simhash-py automatically handles shingle generation
-            self._simhash = SimHashLib(text)
+            # Build character shingles and pass as feature list.
+            # SimHashLib accepts a list[str] and treats each element as a feature,
+            # so passing shingles gives true shingle-based fingerprinting.
+            shingles = [
+                text[i : i + shingle_size]
+                for i in range(len(text) - shingle_size + 1)
+            ]
+            # Fall back to word tokens if text is shorter than shingle_size
+            features = shingles if shingles else text.split()
+            self._simhash = SimHashLib(features)
             self._fingerprint = self._simhash.value
     
     def hamming_distance(self, other: SimHash) -> int:
