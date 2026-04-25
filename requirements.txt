@@ -1,0 +1,6 @@
+pypdf>=3.0.0
+datasketch>=1.6.0
+simhash>=2.1.2
+google-genai>=0.3.0
+streamlit>=1.30.0
+python-dotenv>=1.0.0

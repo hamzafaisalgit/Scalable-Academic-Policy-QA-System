@@ -11,6 +11,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from retrieval import HybridRetriever, SimilarityMethod, SimilarityResult
 from tfidf import TFIDFRetriever
+from pagerank import PageRankScorer, build_pagerank_from_tfidf
 
 
 @dataclass
@@ -47,6 +48,7 @@ class AnswerResult:
     retrieved_chunks: List[SimilarityResult]
     answer_generation_method: str = "llm"
     model: str = "gpt-3.5-turbo"
+    pagerank_scores: Optional[Dict[str, float]] = None
 
 
 class QueryProcessor:
@@ -66,23 +68,24 @@ class QueryProcessor:
         tfidf_retriever: Optional[TFIDFRetriever] = None,
         llm_api_key: Optional[str] = None,
         llm_model: str = "gemini-2.5-flash",
+        pagerank_alpha: float = 0.30,
     ):
         """
         Initialize QueryProcessor with retrieval backends and LLM configuration.
-        
+
         Args:
             lsh_retriever: HybridRetriever instance (MinHash+LSH method).
-                          If None, LSH retrieval will be unavailable.
             tfidf_retriever: TFIDFRetriever instance (TF-IDF baseline).
-                            If None, TF-IDF retrieval will be unavailable.
             llm_api_key: API key for Gemini API.
-                        If None, attempts to load from GEMINI_API_KEY environment variable.
-            llm_model: LLM model name (default: "gemini-pro")
+            llm_model: LLM model name (default: "gemini-2.5-flash")
+            pagerank_alpha: Weight given to PageRank in reranking (0=pure sim, 1=pure PR)
         """
         self.lsh_retriever = lsh_retriever
         self.tfidf_retriever = tfidf_retriever
         self._corpus_indexed = False
-        
+        self.pagerank_scorer: Optional[PageRankScorer] = None
+        self.pagerank_alpha = pagerank_alpha
+
         # LLM Configuration
         self.llm_api_key = llm_api_key or os.getenv("GEMINI_API_KEY")
         self.llm_model = llm_model
@@ -129,11 +132,20 @@ class QueryProcessor:
 
         self._corpus_indexed = True
 
+        # Build PageRank scorer from TF-IDF vectors (primary integration path)
+        if self.tfidf_retriever:
+            try:
+                self.pagerank_scorer = build_pagerank_from_tfidf(
+                    self.tfidf_retriever, threshold=0.15
+                )
+            except Exception:
+                self.pagerank_scorer = None
+
     def retrieve_lsh(
         self,
         query: str,
         top_k: int = 5,
-        minhash_threshold: float = 0.01,
+        minhash_threshold: float = 0.05,
     ) -> List[SimilarityResult]:
         """
         Retrieve top-k chunks using LSH-based (approximate) method.
@@ -322,16 +334,22 @@ class QueryProcessor:
         
         context = "\n\n".join(context_parts)
         
-        prompt = f"""Based on the following retrieved academic policy documents, answer the user's question.
-Provide a clear, concise answer based ONLY on the information in the documents.
-If the documents don't contain relevant information, state that clearly.
+        prompt = f"""You are an academic policy expert assistant. Using the retrieved policy document excerpts below, provide a comprehensive and detailed answer to the student's question.
+
+Your answer should:
+- Be thorough and well-structured (minimum 4-6 sentences)
+- Cover all relevant requirements, conditions, procedures, deadlines, and exceptions found in the documents
+- Use clear language a student can act on
+- Be based ONLY on information present in the retrieved documents
+- If multiple aspects of the question are addressed in different documents, cover each one
+- If the documents do not contain enough information to answer fully, say so explicitly
 
 RETRIEVED DOCUMENTS:
 {context}
 
-USER QUESTION: {query}
+STUDENT QUESTION: {query}
 
-ANSWER:"""
+DETAILED ANSWER:"""
         
         return prompt
 
@@ -386,7 +404,7 @@ ANSWER:"""
             contents=prompt,
             config=GenerateContentConfig(
                 temperature=temperature,
-                max_output_tokens=500,
+                max_output_tokens=1024,
             )
         )
         answer = response.text.strip() if response.text else "Unable to generate answer"
@@ -447,14 +465,29 @@ ANSWER:"""
                 f"Invalid retrieval_method '{retrieval_method}'. "
                 "Must be 'tfidf', 'lsh', or 'both'"
             )
-        
+
+        # Re-rank with PageRank if scorer is available
+        if self.pagerank_scorer is not None:
+            retrieved_chunks = self.pagerank_scorer.rerank(
+                retrieved_chunks, alpha=self.pagerank_alpha
+            )
+
+        # Collect per-chunk PageRank scores for the UI
+        pagerank_scores: Optional[Dict[str, float]] = None
+        if self.pagerank_scorer is not None:
+            pagerank_scores = {
+                chunk.chunk_id: self.pagerank_scorer.get_normalised_score(chunk.chunk_id)
+                for chunk in retrieved_chunks
+            }
+
         # Generate answer using Gemini LLM
         answer_result = self.generate_answer_gemini(
             query=query,
             retrieved_chunks=retrieved_chunks,
             temperature=temperature,
         )
-        
+        answer_result.pagerank_scores = pagerank_scores
+
         return answer_result
 
     def get_status(self) -> Dict[str, Any]:
@@ -477,6 +510,8 @@ ANSWER:"""
             tfidf_chunks = len(self.tfidf_retriever._chunks)
             tfidf_indexed = tfidf_chunks > 0
         
+        pr_stats = self.pagerank_scorer.stats() if self.pagerank_scorer else None
+
         return {
             "corpus_indexed": self._corpus_indexed,
             "lsh_available": self.lsh_retriever is not None,
@@ -487,6 +522,8 @@ ANSWER:"""
             "tfidf_chunk_count": tfidf_chunks,
             "llm_available": self._llm_available,
             "llm_model": self.llm_model if self._llm_available else None,
+            "pagerank_available": self.pagerank_scorer is not None,
+            "pagerank_stats": pr_stats,
         }
 
 

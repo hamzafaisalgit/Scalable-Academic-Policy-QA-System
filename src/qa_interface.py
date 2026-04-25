@@ -75,14 +75,21 @@ def display_answer_result(answer_result, show_sources=True):
     # Display retrieved chunks as supporting evidence
     if show_sources and answer_result.retrieved_chunks:
         st.markdown("### Supporting Evidence (Retrieved Chunks)")
-        
+
         for i, chunk in enumerate(answer_result.retrieved_chunks, 1):
+            pr_score = None
+            if answer_result.pagerank_scores:
+                pr_score = answer_result.pagerank_scores.get(chunk.chunk_id)
+
+            pr_label = f" | PageRank: {pr_score:.3f}" if pr_score is not None else ""
             with st.expander(
-                f"📄 Chunk {i} - {chunk.chunk_id} "
-                f"(Relevance: {chunk.similarity_score:.2%})"
+                f"📄 Chunk {i} — {chunk.chunk_id} "
+                f"(Relevance: {chunk.similarity_score:.2%}{pr_label})"
             ):
                 st.markdown(f"**Text:**\n{chunk.text}")
-                
+                if pr_score is not None:
+                    st.progress(pr_score, text=f"PageRank importance: {pr_score:.3f}")
+
                 # Display metadata if available
                 if hasattr(chunk, 'metadata') and chunk.metadata:
                     st.markdown("**Metadata:**")
@@ -188,7 +195,14 @@ def main():
                 "TF-IDF Chunks": status["tfidf_chunk_count"],
                 "LSH Chunks": status["lsh_chunk_count"],
                 "LLM Available": status["llm_available"],
+                "PageRank Ready": status.get("pagerank_available", False),
             })
+            if status.get("pagerank_stats"):
+                ps = status["pagerank_stats"]
+                st.caption(
+                    f"PageRank: {ps['n_nodes']} nodes, {ps['n_edges']} edges, "
+                    f"{ps['iterations']} iters, {ps['build_time_ms']:.0f} ms"
+                )
     
     # Main content area
     if not st.session_state.corpus_loaded:
@@ -235,7 +249,31 @@ def main():
             
             # Display results
             display_answer_result(answer_result, show_sources=True)
-            
+
+            # Show PageRank importance panel
+            if processor.pagerank_scorer is not None:
+                st.markdown("---")
+                with st.expander("📊 Top Handbook Sections by PageRank Importance", expanded=False):
+                    st.caption(
+                        "PageRank identifies the most *central* sections of the handbook — "
+                        "chunks that are highly similar to many other important chunks."
+                    )
+                    top_sections = processor.pagerank_scorer.top_sections(n=10)
+                    for rank, (chunk_id, pr_raw) in enumerate(top_sections, 1):
+                        pr_norm = processor.pagerank_scorer.get_normalised_score(chunk_id)
+                        try:
+                            preview = processor.lsh_retriever.get_chunk_text(chunk_id)[:180]
+                        except Exception:
+                            preview = ""
+                        col_rank, col_info = st.columns([1, 9])
+                        with col_rank:
+                            st.markdown(f"**#{rank}**")
+                        with col_info:
+                            st.markdown(f"`{chunk_id}` — score: **{pr_norm:.3f}**")
+                            if preview:
+                                st.caption(preview + ("…" if len(preview) == 180 else ""))
+                        st.progress(pr_norm)
+
             # Show method comparison if requested
             if show_comparison and retrieval_method == "both":
                 st.markdown("---")
