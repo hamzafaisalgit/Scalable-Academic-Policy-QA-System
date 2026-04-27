@@ -404,7 +404,7 @@ DETAILED ANSWER:"""
             contents=prompt,
             config=GenerateContentConfig(
                 temperature=temperature,
-                max_output_tokens=1024,
+                max_output_tokens=4096,
             )
         )
         answer = response.text.strip() if response.text else "Unable to generate answer"
