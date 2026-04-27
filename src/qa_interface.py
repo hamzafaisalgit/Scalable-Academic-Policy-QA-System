@@ -83,7 +83,7 @@ def display_answer_result(answer_result, show_sources=True):
 
             pr_label = f" | PageRank: {pr_score:.3f}" if pr_score is not None else ""
             with st.expander(
-                f"📄 Chunk {i} — {chunk.chunk_id} "
+                f"Chunk {i} — {chunk.chunk_id} "
                 f"(Relevance: {chunk.similarity_score:.2%}{pr_label})"
             ):
                 st.markdown(f"**Text:**\n{chunk.text}")
@@ -111,18 +111,18 @@ def main():
     # Page configuration
     st.set_page_config(
         page_title="Academic Policy QA System",
-        page_icon="📚",
+        page_icon="",
         layout="wide",
         initial_sidebar_state="expanded",
     )
     
     # Title and description
-    st.title("📚 Academic Policy QA System")
+    st.title(" Academic Policy QA System")
     st.markdown(
         """
         This system answers questions about academic policies using:
         - **Retrievers**: LSH-based (fast) or TF-IDF (accurate)
-        - **Answer Generation**: Gemini API (Google - fluent and contextual)
+        - **Answer Generation**: Gemini API with retrieved context
         
         All answers are based on retrieved document content with supporting evidence.
         """
@@ -133,18 +133,18 @@ def main():
     
     # Sidebar configuration
     with st.sidebar:
-        st.header("⚙️ Configuration")
+        st.header("Configuration")
         
         # Load corpus button
         if not st.session_state.corpus_loaded:
-            if st.button("📥 Load Corpus", use_container_width=True):
+            if st.button("Load Corpus", use_container_width=True):
                 load_corpus()
-                st.success("✅ Corpus loaded successfully!")
+                st.success(" Corpus loaded successfully!")
         else:
-            st.success("✅ Corpus loaded")
-            if st.button("🔄 Reload Corpus", use_container_width=True):
+            st.success(" Corpus loaded")
+            if st.button(" Reload Corpus", use_container_width=True):
                 load_corpus()
-                st.success("✅ Corpus reloaded!")
+                st.success(" Corpus reloaded!")
         
         # Retrieval method selection
         retrieval_method = st.selectbox(
@@ -176,11 +176,11 @@ def main():
         llm_key = os.getenv("GEMINI_API_KEY")
         if not llm_key:
             st.warning(
-                "⚠️ Gemini API key not found. "
+                " Gemini API key not found. "
                 "Set GEMINI_API_KEY environment variable to use this system."
             )
         else:
-            st.info("✅ Gemini API key configured")
+            st.info("Gemini API key configured")
         
         # Status information
         st.markdown("---")
@@ -206,13 +206,13 @@ def main():
     
     # Main content area
     if not st.session_state.corpus_loaded:
-        st.warning("📥 Please load the corpus first using the sidebar button.")
+        st.warning("Please load the corpus first using the sidebar button.")
         return
     
     # Check if Gemini is available
     llm_key = os.getenv("GEMINI_API_KEY")
     if not llm_key:
-        st.error("❌ Gemini API key not configured. Please set GEMINI_API_KEY environment variable.")
+        st.error("Gemini API key not configured. Please set GEMINI_API_KEY environment variable.")
         return
     
     # Query input
@@ -226,7 +226,7 @@ def main():
     # Query submission
     col1, col2, col3 = st.columns([2, 1, 1])
     with col2:
-        submit_button = st.button("🔍 Search", use_container_width=True)
+        submit_button = st.button(" Search", use_container_width=True)
     with col3:
         show_comparison = st.checkbox("Compare Methods", value=False)
     
@@ -253,7 +253,7 @@ def main():
             # Show PageRank importance panel
             if processor.pagerank_scorer is not None:
                 st.markdown("---")
-                with st.expander("📊 Top Handbook Sections by PageRank Importance", expanded=False):
+                with st.expander(" Top Handbook Sections by PageRank Importance", expanded=False):
                     st.caption(
                         "PageRank identifies the most *central* sections of the handbook — "
                         "chunks that are highly similar to many other important chunks."
@@ -277,7 +277,7 @@ def main():
             # Show method comparison if requested
             if show_comparison and retrieval_method == "both":
                 st.markdown("---")
-                st.subheader("📊 Retrieval Method Comparison")
+                st.subheader("Retrieval Method Comparison")
                 
                 with st.spinner("Comparing retrieval methods..."):
                     comparison = processor.compare_methods(query, top_k=top_k)
@@ -317,14 +317,14 @@ def main():
                 st.bar_chart(overlap_data)
         
         except RuntimeError as e:
-            st.error(f"❌ Error: {str(e)}")
+            st.error(f"Error: {str(e)}")
         except Exception as e:
-            st.error(f"❌ Unexpected error: {str(e)}")
+            st.error(f"Unexpected error: {str(e)}")
     
     # Query history
     if st.session_state.query_history:
         st.markdown("---")
-        st.subheader("📋 Query History")
+        st.subheader("Query History")
         for prev_query in st.session_state.query_history[-5:]:
             if st.button(prev_query, key=f"history_{prev_query}"):
                 st.session_state.current_query = prev_query
